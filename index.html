@@ -1,16 +1,6 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-71XLKQWRKZ"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'G-71XLKQWRKZ');
-    </script>
-
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KR8 Labs | Custom Web Development &amp; Software Solutions</title>
@@ -30,14 +20,27 @@
       content="KR8 Labs builds custom websites, SaaS platforms, and business software — fast, secure, and built to last. Based in Palawan, Philippines."
     />
     <meta property="og:url" content="https://kr8labs.com/" />
-    <meta property="og:image" content="https://kr8labs.com/favicon.png" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:locale" content="en_US" />
+    <!-- 1200x630 share card. Declaring the dimensions lets platforms lay the
+         card out without fetching the image first. -->
+    <meta property="og:image" content="https://kr8labs.com/og-card.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="KR8 Labs — custom web development that scales. Puerto Princesa City, Palawan."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="KR8 Labs | Custom Web Development &amp; Software Solutions" />
     <meta
       name="twitter:description"
       content="KR8 Labs builds custom websites, SaaS platforms, and business software — fast, secure, and built to last. Based in Palawan, Philippines."
     />
-    <meta name="twitter:image" content="https://kr8labs.com/favicon.png" />
+    <meta name="twitter:image" content="https://kr8labs.com/og-card.jpg" />
+    <meta
+      name="twitter:image:alt"
+      content="KR8 Labs — custom web development that scales. Puerto Princesa City, Palawan."
+    />
 
     <script type="application/ld+json">
       {
@@ -48,8 +51,10 @@
         "logo": "https://kr8labs.com/favicon.png",
         "email": "mail@kr8labs.com",
         "description": "KR8 Labs builds custom websites, SaaS platforms, and business software for growing businesses. Based in Palawan, Philippines.",
+        "image": "https://kr8labs.com/og-card.jpg",
         "address": {
           "@type": "PostalAddress",
+          "addressLocality": "Puerto Princesa City",
           "addressRegion": "Palawan",
           "addressCountry": "PH"
         },
@@ -73,6 +78,17 @@
       href="https://fonts.googleapis.com/css2?family=Geist:wght@400;450;500;600&family=Geist+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+
+    <!-- Google tag (gtag.js) — kept below the metadata block so the parser
+         reaches title/description/OG before a third-party script. -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-71XLKQWRKZ"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-71XLKQWRKZ');
+    </script>
   </head>
   <body>
     <div id="bg" aria-hidden="true"></div>
