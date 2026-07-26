@@ -5,7 +5,7 @@ export function faq(): HTMLElement {
   return fromHTML(`
     <section class="faq" id="faq">
       <div class="faq-header">
-        <p class="eyebrow">06 · FAQ</p>
+        <p class="eyebrow">07 · FAQ</p>
         <h2>Frequently Asked Questions</h2>
       </div>
       <div class="faq-list">

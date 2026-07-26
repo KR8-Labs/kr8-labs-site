@@ -75,6 +75,143 @@ export const SERVICES: Service[] = [
   },
 ];
 
+export interface PricingAddOn {
+  name: string;
+  price: string;
+}
+
+export const PRICING_ADDONS: PricingAddOn[] = [
+  { name: "Additional Page", price: "₱2,500" },
+  { name: "Blog / CMS", price: "₱8,000" },
+  { name: "Booking System", price: "₱15,000" },
+  { name: "Payment Gateway", price: "₱20,000" },
+  { name: "Membership System", price: "₱25,000" },
+  { name: "Multi-language Support", price: "₱10,000" },
+  { name: "Logo Design", price: "₱10,000" },
+  { name: "Google Business Profile Setup", price: "₱5,000" },
+];
+
+export type PricingTierKey = "landing" | "portfolio" | "site" | "webapp" | "saas";
+
+export interface PricingTier {
+  description: string;
+  startingPrice: string;
+  priceSuffix?: string;
+  delivery: string;
+  includes: string[];
+}
+
+export const PRICING_TIERS: Record<PricingTierKey, PricingTier> = {
+  landing: {
+    description: "For businesses that need a professional single-page site to generate leads or promote a product or service.",
+    startingPrice: "₱15,000",
+    delivery: "5–10 business days",
+    includes: [
+      "Custom responsive design",
+      "Up to 1 page",
+      "Contact form",
+      "Google Maps integration",
+      "Mobile optimization",
+      "Basic on-page SEO",
+      "Speed optimization",
+      "Domain & deployment assistance",
+      "Google Analytics setup",
+      "Basic accessibility",
+      "2 rounds of revisions",
+    ],
+  },
+  portfolio: {
+    description: "For individuals who want a polished personal site to showcase their work, résumé, or personal brand.",
+    startingPrice: "₱12,000",
+    delivery: "5–8 business days",
+    includes: [
+      "Custom responsive design",
+      "Up to 1 page",
+      "Project / work showcase layout",
+      "Contact form",
+      "Mobile optimization",
+      "Speed optimization",
+      "Domain & deployment assistance",
+      "Basic accessibility",
+      "2 rounds of revisions",
+    ],
+  },
+  site: {
+    description: "For businesses that need a complete website with multiple pages.",
+    startingPrice: "₱35,000",
+    delivery: "2–4 weeks",
+    includes: [
+      "Up to 5 pages",
+      "Custom UI/UX",
+      "Contact forms",
+      "Image gallery",
+      "About, Services, Contact pages",
+      "Google Maps integration",
+      "Technical SEO",
+      "Analytics setup",
+      "Performance optimization",
+      "Deployment",
+    ],
+  },
+  webapp: {
+    description: "For businesses that need custom software tailored to internal operations — inventory systems, booking platforms, portals, dashboards, and more.",
+    startingPrice: "₱80,000",
+    delivery: "8–12 weeks",
+    includes: [
+      "Discovery workshop",
+      "System architecture",
+      "Database design",
+      "Authentication",
+      "Admin dashboard",
+      "API development",
+      "Deployment",
+      "Documentation",
+      "Training session",
+    ],
+  },
+  saas: {
+    description: "For founders building a multi-tenant product with subscriptions, billing, and user accounts from day one.",
+    startingPrice: "₱120,000",
+    delivery: "10–14 weeks",
+    includes: [
+      "Discovery workshop",
+      "System architecture",
+      "Multi-tenant database design",
+      "Authentication & role management",
+      "Subscription & billing integration",
+      "Admin dashboard",
+      "API development",
+      "Deployment",
+      "Documentation",
+    ],
+  },
+};
+
+export interface PricingProjectType {
+  label: string;
+  tierKey: PricingTierKey;
+}
+
+export const PRICING_SINGLE_TYPES: PricingProjectType[] = [
+  { label: "Landing Page", tierKey: "landing" },
+  { label: "Portfolio", tierKey: "portfolio" },
+  { label: "Marketing Site", tierKey: "site" },
+  { label: "Web App", tierKey: "webapp" },
+  { label: "SaaS Platform", tierKey: "saas" },
+];
+
+export interface PricingUrgencyOption {
+  label: string;
+  /** Multiplier applied to (base price + add-ons) — 1 = no change. */
+  multiplier: number;
+}
+
+export const PRICING_URGENCY: PricingUrgencyOption[] = [
+  { label: "Flexible", multiplier: 0.9 },
+  { label: "Standard", multiplier: 1 },
+  { label: "Rush (ASAP)", multiplier: 1.25 },
+];
+
 export interface Work {
   name: string;
   tagline: string;

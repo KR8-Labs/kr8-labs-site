@@ -12,6 +12,7 @@ export function nav(): HTMLElement {
         <a href="#services">Services</a>
         <a href="#works">Work</a>
         <a href="#process">Process</a>
+        <a href="#pricing">Pricing</a>
         <a href="#faq">FAQ</a>
       </nav>
       <a class="btn btn-primary btn-sm nav-cta" href="mailto:${CONTACT_EMAIL}">
