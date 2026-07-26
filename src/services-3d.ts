@@ -189,7 +189,12 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
   camera.position.z = CAMERA_Z;
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const TARGET_MS = 1000 / 30;
+  // The 2ms slack matters: rAF on a 60Hz display delivers deltas that jitter
+  // either side of 16.67ms, so a threshold sitting exactly on that figure
+  // would reject every marginally-early frame and halve the real rate to
+  // 30fps. The cap still holds on 120Hz panels — 8.33ms deltas are rejected
+  // until two have accumulated.
+  const TARGET_MS = 1000 / 60 - 2;
   const BASELINE_MS = 1000 / 60;
   // Capped lower than the usual 2x — this canvas now spans the full section
   // (not half of it, and not a small grid-cell icon), so at dpr 2 the bloom
@@ -336,11 +341,11 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
     lastTime = time;
 
     // applyCarousel() re-reads whatever `carousel` was most recently set to
-    // by scroll — doing the position/scale/opacity recompute here (throttled
-    // to ~30fps) rather than on every scroll event is what keeps scrolling
-    // cheap: scroll can fire much faster than 30fps, and re-deriving 6
-    // objects' transforms that often was real, measurable main-thread cost
-    // competing with Lenis's own scroll interpolation.
+    // by scroll — doing the position/scale/opacity recompute on this frame
+    // clock rather than on every scroll event is what keeps scrolling cheap:
+    // scroll can fire far more often than the display refreshes, and
+    // re-deriving 6 objects' transforms that often was real, measurable
+    // main-thread cost competing with Lenis's own scroll interpolation.
     applyCarousel();
     if (!reducedMotion) {
       const rotationScale = dt / BASELINE_MS;
@@ -380,7 +385,7 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
   }
   document.addEventListener('visibilitychange', onVisibilityChange);
 
-  // Scroll can fire far more often than tick()'s own 30fps cap — this just
+  // Scroll can fire far more often than tick()'s own frame cap — this just
   // stores the value (a single assignment, effectively free at any call
   // rate); tick() re-derives the actual transforms from it on its next
   // throttled frame. Only apply + render synchronously here when tick()'s

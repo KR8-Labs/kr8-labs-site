@@ -492,14 +492,21 @@ section {
   max-width: 420px;
 }
 
+/* Vertical rail, pinned to the right edge of the content column and centred
+   in the stage. Taken out of the text column's flow — as a column of six it
+   would otherwise add ~200px below the copy and push it off the stage. */
 .services-progress {
+  position: absolute;
+  right: var(--gutter);
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  margin-top: 40px;
 }
 .services-progress-dot {
-  width: 24px;
-  height: 3px;
+  width: 3px;
+  height: 24px;
   background: var(--border);
   transition: background var(--btn-transition);
 }
