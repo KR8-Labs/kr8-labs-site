@@ -385,7 +385,14 @@ section {
   height: 100%;
 }
 /* --- Services — card grid ------------------------------------------- */
+/* Pins for the whole section (its sticky container is .services, which spans
+   the full track) so the title stays on screen once the full-bleed stage has
+   covered the viewport. z-index has to beat .services-stage, which is itself
+   sticky and comes later in the DOM. */
 .services-header {
+  position: sticky;
+  top: calc(var(--header-h) + 40px);
+  z-index: 2;
   margin-bottom: 64px;
 }
 .services-header h2 {
@@ -396,68 +403,108 @@ section {
   line-height: 1.0;
 }
 
-.services-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  border: 1px solid var(--border);
-}
-
-.service-card {
+/* Tall scroll "track" — its height (set via --count from JS) is what gives
+   the pinned .services-stage room for the entrance reveal plus one carousel
+   step per service before it un-sticks and the page continues past it. */
+.services-track {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0;
-  padding: 0;
-  min-height: 380px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  overflow: hidden;
-  transition: background var(--btn-transition), border-color var(--btn-transition);
-}
-.service-card:hover {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
+  height: calc(var(--count, 6) * 100vh);
 }
 
-.service-card-icon {
+/* No card/border/background here — the 3D object sits directly in the
+   page's open space (same treatment as the hero particle logo and the CTA
+   black hole), not boxed into a panel. Canvas is full-bleed within this box;
+   text overlays on top of it rather than sitting beside it in a column. */
+.services-stage {
+  position: sticky;
+  top: 0;
+  z-index: 0; /* stays under .services-header, which pins on top of it */
+  height: 100vh;
+  /* Full-bleed: break out of #app's --maxw + --gutter so the canvas covers
+     the entire viewport, not just the content column. Safe against a
+     100vw/scrollbar mismatch because body already sets overflow-x: hidden. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  overflow: hidden;
+}
+
+.services-stage-canvas-wrap {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  will-change: transform, opacity;
 }
-.service-card-icon canvas {
+.services-stage-canvas {
   width: 100% !important;
   height: 100% !important;
-  mix-blend-mode: lighten;
+  display: block;
 }
 
-.service-card-text {
+/* The stage is full-bleed, so pull the copy back into the page's content
+   column by re-applying #app's own max-width + gutter here. */
+.services-stage-text {
   position: relative;
   z-index: 1;
+  height: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 32px;
-  background: linear-gradient(to bottom, transparent, var(--surface) 40%);
-  width: 100%;
+  justify-content: center;
+  transition: opacity 200ms linear;
 }
 
-.service-card-title {
-  font-size: 1.125rem;
+.services-stage-panels {
+  position: relative;
+  min-height: 220px;
+  max-width: 420px;
+}
+.services-panel {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 400ms var(--ease);
+  pointer-events: none;
+}
+.services-panel.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.services-panel-num {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--accent-lavender);
+  margin-bottom: 16px;
+}
+.services-panel-title {
+  font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--text);
 }
-
-.service-card-desc {
-  font-size: 0.875rem;
+.services-panel-desc {
+  margin-top: 16px;
+  font-size: 0.9375rem;
   color: var(--text-muted);
-  line-height: 1.6;
-  text-align: center;
-  max-width: 260px;
+  line-height: 1.65;
+  max-width: 420px;
+}
+
+.services-progress {
+  display: flex;
+  gap: 10px;
+  margin-top: 40px;
+}
+.services-progress-dot {
+  width: 24px;
+  height: 3px;
+  background: var(--border);
+  transition: background var(--btn-transition);
+}
+.services-progress-dot.is-active {
+  background: var(--accent-lavender);
 }
 
 /* --- Tech Stack ----------------------------------------------------- */
@@ -1085,14 +1132,18 @@ section {
     justify-self: center;
   }
 
-  .services-grid {
-    grid-template-columns: repeat(2, 1fr);
+  /* Stacked layout: copy drops to the bottom of the stage and the 3D objects
+     lift into the space above it (the lift itself lives in services-3d.ts's
+     resize(), keyed to the same 768px breakpoint). */
+  .services-stage-text {
+    justify-content: flex-end;
+    padding-bottom: 10vh;
   }
-  .service-card {
-    min-height: 320px;
+  .services-stage-panels {
+    max-width: none;
   }
-  .service-card-icon {
-    /* fills card via absolute positioning — no size override needed */
+  .services-panel-desc {
+    max-width: none;
   }
   .tech-stack-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -1144,12 +1195,6 @@ section {
 
 @media (max-width: 480px) {
 
-  .services-grid {
-    grid-template-columns: 1fr;
-  }
-  .service-card {
-    min-height: 340px;
-  }
   .tech-stack-grid {
     grid-template-columns: 1fr;
   }

@@ -4,11 +4,34 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 export interface Services3D {
+  /** Continuous front-of-carousel position (0..count, wraps) — not just an
+   * integer index, so scroll can scrub smoothly between objects. */
+  setCarousel(value: number): void;
   destroy(): void;
 }
 
 const CAMERA_Z = 3.0;
 const FOV = 45;
+const SPEEDS = [0.003, 0.005, 0.004, 0.006, 0.0045, 0.0055];
+// How far back an object travels across its own step before handing off.
+const RECEDE_DISTANCE = 1.7;
+const RECEDE_SCALE_FLOOR = 0.55;
+// Portions of a step spent fading in at the front / fading out into the back.
+// These must not overlap (FADE_IN + FADE_OUT < 1) — that's what guarantees
+// only one object is ever on screen at a time. Because exactly one object is
+// ever visible, opacity has to pass through zero at each handoff; keeping the
+// windows short confines that to a brief blink instead of leaving the stage
+// dim for a third of every step.
+const FADE_IN = 0.08;
+const FADE_OUT = 0.12;
+// Layout offsets, as fractions of the frustum at z=0. Matches the 768px CSS
+// breakpoint, which is where .services-stage-text switches to bottom-aligned.
+const MOBILE_BREAKPOINT = 768;
+const DESKTOP_X_SHIFT = 0.15;
+// Stacked layout is a three-band column: pinned header, objects, copy. The
+// lift centres the objects in the middle band, so it clears the header rather
+// than sitting under it.
+const MOBILE_Y_LIFT = 0.08;
 
 function createWireframeMaterial(opacity: number): THREE.LineBasicMaterial {
   return new THREE.LineBasicMaterial({
@@ -149,78 +172,162 @@ const BUILDERS: SceneBuilder[] = [
   scenePerformance,
 ];
 
-export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
+type CarouselItem = {
+  group: THREE.Group;
+  mats: { mat: THREE.LineBasicMaterial; base: number }[];
+};
+
+/**
+ * All 6 objects live in one shared scene, arranged along Z as a depth
+ * carousel — the "front" one (closest to camera) is what setCarousel()'s
+ * value currently points at; the rest recede in a ring behind it, shrinking
+ * and fading with depth. One renderer/composer/bloom-pass instance total
+ * (not 6), since all objects are always in the same scene/render pass.
+ */
+export function initServices3D(canvas: HTMLCanvasElement): Services3D {
   const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
   camera.position.z = CAMERA_Z;
 
-  const SPEEDS = [0.003, 0.005, 0.004, 0.006, 0.0045, 0.0055];
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const TARGET_MS = 1000 / 30;
   const BASELINE_MS = 1000 / 60;
+  // Capped lower than the usual 2x — this canvas now spans the full section
+  // (not half of it, and not a small grid-cell icon), so at dpr 2 the bloom
+  // pass would be shading a meaningfully larger number of pixels than the
+  // earlier layouts this same cap was tuned for.
+  const dpr = Math.min(window.devicePixelRatio, 1.5);
 
-  const scenes: ReturnType<SceneBuilder>[] = [];
-  const renderers: THREE.WebGLRenderer[] = [];
-  const composers: EffectComposer[] = [];
+  const scene = new THREE.Scene();
+  // All objects hang off this so resize() can reposition the whole carousel
+  // in one place: pushed right of the copy on desktop, lifted above it on
+  // mobile (where the copy sits at the bottom of the stage instead).
+  const stage = new THREE.Group();
+  scene.add(stage);
+  const items: CarouselItem[] = BUILDERS.map((build) => {
+    const { group } = build();
+    stage.add(group);
+    const mats: CarouselItem['mats'] = [];
+    group.traverse((child) => {
+      if (child instanceof THREE.LineSegments) {
+        const mat = child.material as THREE.LineBasicMaterial;
+        mats.push({ mat, base: mat.opacity });
+      }
+    });
+    return { group, mats };
+  });
+
+  // Largest half-extent across all six objects, measured once while the stage
+  // is still untransformed. The horizontal figure is taken as a radius in the
+  // XZ plane rather than an x-extent, because tick() spins each group on Y —
+  // an x-only measurement would understate the width at other rotations.
+  const bounds = new THREE.Box3();
+  let extentXZ = 0;
+  let extentY = 0;
+  items.forEach(({ group }) => {
+    bounds.setFromObject(group);
+    extentXZ = Math.max(
+      extentXZ,
+      Math.hypot(bounds.max.x, bounds.max.z),
+      Math.hypot(bounds.min.x, bounds.min.z),
+    );
+    extentY = Math.max(extentY, bounds.max.y, -bounds.min.y);
+  });
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(dpr);
+  renderer.setClearColor(0x000000, 0);
+  canvas.replaceWith(renderer.domElement);
+  renderer.domElement.className = canvas.className;
+
+  const renderPass = new RenderPass(scene, camera);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.0, 0.8, 0);
+  // Assigned synchronously by the resize() call further below.
+  let composer!: EffectComposer;
+
+  let carousel = 0;
+
+  // Re-derives every object's position/scale/opacity from the current
+  // carousel value. Each object owns exactly one unit-wide step of that
+  // value: object i is on screen only while `carousel` is inside [i, i+1),
+  // where it fades in at the front, holds, then recedes and fades out just
+  // as object i+1 takes over — so exactly one is ever visible.
+  // Called before the first resize()/render() below so that render never
+  // draws a frame with objects still at their untransformed default
+  // positions (all stacked at the origin).
+  function applyCarousel() {
+    const last = items.length - 1;
+    items.forEach((item, i) => {
+      const local = carousel - i; // 0 → 1 across this object's own step
+      item.group.visible = local >= 0 && local < 1;
+      if (!item.group.visible) return;
+      item.group.position.z = -local * RECEDE_DISTANCE;
+      item.group.scale.setScalar(1 - local * (1 - RECEDE_SCALE_FLOOR));
+      let fade = 1;
+      // The first and last objects have no neighbour to hand off to on their
+      // outer edge, so they hold rather than fading against an empty stage —
+      // the first would otherwise ride the entrance up as an empty card, and
+      // the last would dissolve at the bottom of the track.
+      if (i > 0 && local < FADE_IN) fade = local / FADE_IN;
+      else if (i < last && local > 1 - FADE_OUT) fade = (1 - local) / FADE_OUT;
+      item.mats.forEach(({ mat, base }) => {
+        mat.opacity = base * fade;
+      });
+    });
+  }
+  applyCarousel();
+
+  function resize() {
+    const parent = renderer.domElement.parentElement;
+    if (!parent) return;
+    const w = parent.clientWidth;
+    const h = parent.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    bloom.resolution.set(w, h);
+
+    // Keep the carousel clear of the copy. The stage is full-viewport, so the
+    // frustum's world extent at z=0 is what converts "a fraction of the
+    // screen" into the world units the offsets are expressed in.
+    const frustumH = 2 * Math.tan((FOV * Math.PI) / 360) * CAMERA_Z;
+    const frustumW = frustumH * camera.aspect;
+    const stacked = w < MOBILE_BREAKPOINT;
+    stage.position.x = stacked ? 0 : frustumW * DESKTOP_X_SHIFT;
+    stage.position.y = stacked ? frustumH * MOBILE_Y_LIFT : 0;
+
+    // Scale to fit rather than assuming the objects' authored size suits every
+    // viewport: at portrait aspect the frustum is far narrower than the
+    // desktop one they were built against, and they'd overflow the sides.
+    // Vertically on mobile they also have to clear the copy below them, hence
+    // the tighter allowance there.
+    const fit = Math.min(
+      1,
+      ((frustumW / 2) * 0.82) / extentXZ,
+      ((frustumH / 2) * (stacked ? 0.34 : 0.82)) / extentY,
+    );
+    stage.scale.setScalar(fit);
+
+    // Same anti-aliasing note as before: EffectComposer renders into its own
+    // WebGLRenderTarget, so the renderer's antialias:true never reaches the
+    // canvas once bloom is in the chain — an explicit multisampled target
+    // restores it through the composer.
+    const renderTarget = new THREE.WebGLRenderTarget(w * dpr, h * dpr, { samples: 4 });
+    composer?.dispose();
+    composer = new EffectComposer(renderer, renderTarget);
+    composer.addPass(renderPass);
+    composer.addPass(bloom);
+    composer.render();
+  }
+
+  const ro = new ResizeObserver(resize);
+  if (renderer.domElement.parentElement) ro.observe(renderer.domElement.parentElement);
+  resize();
 
   let rafId = 0;
   let lastTime = 0;
   let inViewport = false;
   let tabVisible = document.visibilityState === 'visible';
-  let buildRafId = 0;
-  let destroyed = false;
-
-  // Building one icon (WebGL context + EdgesGeometry + EffectComposer +
-  // bloom pass) synchronously for all 6 was a single ~350ms main-thread
-  // block right as the grid scrolled into view. Building one per animation
-  // frame instead spreads that cost across ~6 frames the browser can still
-  // paint and respond to input between, trading one stutter for an
-  // imperceptible staggered pop-in. The render() call here also warms up
-  // shader compilation per-icon (normally deferred to first render) so the
-  // rotation loop's first tick doesn't itself stutter once all 6 are built.
-  function buildOne(i: number) {
-    const slot = canvasSlots[i];
-    const s = BUILDERS[i]();
-    scenes[i] = s;
-
-    const w = slot.clientWidth;
-    const h = slot.clientHeight;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(w, h, false);
-    renderer.setClearColor(0x000000, 1);
-    slot.appendChild(renderer.domElement);
-    renderers[i] = renderer;
-
-    const pixelRatio = renderer.getPixelRatio();
-    // EffectComposer renders into its own WebGLRenderTarget rather than
-    // straight to the canvas, so the renderer's antialias:true never
-    // actually applies once post-processing (the bloom pass) is added —
-    // this is what was giving the wireframe edges a jagged/pixelated look.
-    // An explicit multisampled render target restores anti-aliasing through
-    // the composer chain; it's cheap at this resolution (a few MB per icon).
-    const renderTarget = new THREE.WebGLRenderTarget(w * pixelRatio, h * pixelRatio, { samples: 4 });
-    const composer = new EffectComposer(renderer, renderTarget);
-    composer.addPass(new RenderPass(s.scene, camera));
-    const bloom = new UnrealBloomPass(
-      new THREE.Vector2(w, h),
-      1.0, 0.8, 0,
-    );
-    composer.addPass(bloom);
-    composers[i] = composer;
-
-    composer.render();
-  }
-
-  function buildStep(index: number) {
-    if (destroyed) return;
-    buildOne(index);
-    if (index + 1 < canvasSlots.length) {
-      buildRafId = requestAnimationFrame(() => buildStep(index + 1));
-    } else {
-      buildRafId = 0;
-    }
-  }
-  buildRafId = requestAnimationFrame(() => buildStep(0));
 
   function tick(time: number) {
     rafId = requestAnimationFrame(tick);
@@ -228,13 +335,20 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
     if (dt < TARGET_MS) return;
     lastTime = time;
 
-    const rotationScale = dt / BASELINE_MS;
-    // composers.length grows as buildStep progresses — icons animate as
-    // soon as they're built rather than waiting for all 6.
-    for (let i = 0; i < composers.length; i++) {
-      if (!reducedMotion) scenes[i].group.rotation.y += SPEEDS[i] * rotationScale;
-      composers[i].render();
+    // applyCarousel() re-reads whatever `carousel` was most recently set to
+    // by scroll — doing the position/scale/opacity recompute here (throttled
+    // to ~30fps) rather than on every scroll event is what keeps scrolling
+    // cheap: scroll can fire much faster than 30fps, and re-deriving 6
+    // objects' transforms that often was real, measurable main-thread cost
+    // competing with Lenis's own scroll interpolation.
+    applyCarousel();
+    if (!reducedMotion) {
+      const rotationScale = dt / BASELINE_MS;
+      items.forEach((item, i) => {
+        item.group.rotation.y += SPEEDS[i % SPEEDS.length] * rotationScale;
+      });
     }
+    composer.render();
   }
 
   function start() {
@@ -242,14 +356,15 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
     lastTime = 0;
     rafId = requestAnimationFrame(tick);
   }
-  function stop() { cancelAnimationFrame(rafId); rafId = 0; }
-
+  function stop() {
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
   function updatePlayState() {
     if (inViewport && tabVisible && !reducedMotion) start();
     else stop();
   }
 
-  const grid = canvasSlots[0].closest<HTMLElement>(".services-grid")!;
   const observer = new IntersectionObserver(
     ([entry]) => {
       inViewport = entry.isIntersecting;
@@ -257,7 +372,7 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
     },
     { threshold: 0 },
   );
-  observer.observe(grid);
+  observer.observe(renderer.domElement);
 
   function onVisibilityChange() {
     tabVisible = document.visibilityState === 'visible';
@@ -265,22 +380,35 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
   }
   document.addEventListener('visibilitychange', onVisibilityChange);
 
+  // Scroll can fire far more often than tick()'s own 30fps cap — this just
+  // stores the value (a single assignment, effectively free at any call
+  // rate); tick() re-derives the actual transforms from it on its next
+  // throttled frame. Only apply + render synchronously here when tick()'s
+  // rAF loop genuinely isn't running (reducedMotion, or out of viewport/tab
+  // hidden), since nothing else would ever pick up the change in that case.
+  function setCarousel(value: number) {
+    carousel = value;
+    if (!rafId) {
+      applyCarousel();
+      composer.render();
+    }
+  }
+
   function destroy() {
-    destroyed = true;
-    if (buildRafId) cancelAnimationFrame(buildRafId);
     stop();
+    ro.disconnect();
     observer.disconnect();
     document.removeEventListener('visibilitychange', onVisibilityChange);
-    scenes.forEach((s) => {
-      s.scene.traverse((child) => {
+    items.forEach(({ group }) => {
+      group.traverse((child) => {
         if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
           child.geometry.dispose();
         }
       });
     });
-    composers.forEach(c => c.dispose());
-    renderers.forEach(r => r.dispose());
+    composer.dispose();
+    renderer.dispose();
   }
 
-  return { destroy };
+  return { setCarousel, destroy };
 }
