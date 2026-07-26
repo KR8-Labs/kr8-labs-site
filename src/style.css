@@ -39,7 +39,9 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  /* Lenis (see smooth-scroll.ts) drives anchor-link easing itself — leaving
+     this "smooth" would fight its own rAF-driven scroll animation. */
+  scroll-behavior: auto;
   overscroll-behavior: none;
   scrollbar-width: none;
 }

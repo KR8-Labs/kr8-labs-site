@@ -1,4 +1,5 @@
 import "./style.css";
+import { initSmoothScroll } from "./smooth-scroll.ts";
 import { nav } from "./sections/nav.ts";
 import { hero } from "./sections/hero.ts";
 import { services } from "./sections/services.ts";
@@ -14,3 +15,5 @@ import { footer } from "./sections/footer.ts";
 const app = document.getElementById("app")!;
 document.body.insertBefore(nav(), app);
 app.append(hero(), services(), techStack(), works(), whyKr8(), process(), pricing(), faq(), cta(), footer());
+
+initSmoothScroll();
