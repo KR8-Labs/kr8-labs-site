@@ -1,6 +1,8 @@
 import { fromHTML } from "../dom.ts";
 import { SERVICES } from "../data.ts";
-import { initServices3D, type Services3D } from "../services-3d.ts";
+// Type-only — the module itself is imported dynamically below so that Three.js
+// stays out of the initial bundle. A `import type` is erased at compile time.
+import type { Services3D } from "../services-3d.ts";
 
 // Fraction of the entrance over which the canvas fades from transparent to
 // fully opaque — deliberately well short of 1 so it reaches full opacity
@@ -110,20 +112,25 @@ export function services(): HTMLElement {
   window.addEventListener("scroll", onScroll, { passive: true });
   onScroll();
 
-  // Building the WebGL renderer + bloom pass is cheap now that it's a
-  // single shared instance (see services-3d.ts), but the track is below
-  // the fold on load, so still defer construction until it's about to be
-  // scrolled into view rather than paying that cost unconditionally.
+  // Three.js is ~90% of the site's JavaScript, and this is its only consumer.
+  // Importing it here rather than at module scope keeps it out of the initial
+  // bundle entirely: the observer already decided *when* the scene gets built,
+  // this makes it decide when the library gets downloaded too. The margin is
+  // generous so the fetch has a head start before the track is on screen.
   const initObserver = new IntersectionObserver(
     (entries, obs) => {
       if (!entries.some((e) => e.isIntersecting)) return;
       obs.disconnect();
       if (removed) return;
-      controller = initServices3D(canvas);
-      lastApplied = -1; // force the freshly-built controller to sync to the current state
-      onScroll();
+      import("../services-3d.ts").then(({ initServices3D }) => {
+        // Re-checked because the section can be torn down mid-download.
+        if (removed) return;
+        controller = initServices3D(canvas);
+        lastApplied = -1; // force the freshly-built controller to sync to the current state
+        onScroll();
+      });
     },
-    { rootMargin: "200px 0px" },
+    { rootMargin: "600px 0px" },
   );
   initObserver.observe(track);
 

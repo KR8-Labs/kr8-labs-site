@@ -3,7 +3,7 @@
  */
 export function logoMark(_id = "kr8", size = 30): string {
   const h = Math.round(size * 581 / 610);
-  const src = import.meta.env.BASE_URL + "icon.png";
+  const src = import.meta.env.BASE_URL + "icon.webp";
   return `<img class="logo-mark" src="${src}" width="${size}" height="${h}" alt="" />`;
 }
 

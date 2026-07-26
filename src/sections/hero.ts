@@ -4,7 +4,7 @@ import { initTextMorph } from "../textmorph.ts";
 import { initParticles } from "../svgparticles.ts";
 
 export function hero(): HTMLElement {
-  const iconSrc = import.meta.env.BASE_URL + "icon.png";
+  const iconSrc = import.meta.env.BASE_URL + "icon.webp";
   const section = fromHTML(`
     <section class="hero" id="top">
       <div class="hero-dim" aria-hidden="true"></div>

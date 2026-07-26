@@ -16,7 +16,7 @@
     <title>KR8 Labs | Custom Web Development &amp; Software Solutions</title>
     <meta
       name="description"
-      content="KR8 Labs builds custom websites, SaaS platforms, and business software for growing businesses — fast, secure, and built to last."
+      content="KR8 Labs builds custom websites, SaaS platforms, and business software — fast, secure, and built to last. Based in Palawan, Philippines."
     />
     <link rel="canonical" href="https://kr8labs.com/" />
     <link rel="icon" href="/favicon.png" type="image/png" />
@@ -27,7 +27,7 @@
     <meta property="og:title" content="KR8 Labs | Custom Web Development &amp; Software Solutions" />
     <meta
       property="og:description"
-      content="KR8 Labs builds custom websites, SaaS platforms, and business software for growing businesses — fast, secure, and built to last."
+      content="KR8 Labs builds custom websites, SaaS platforms, and business software — fast, secure, and built to last. Based in Palawan, Philippines."
     />
     <meta property="og:url" content="https://kr8labs.com/" />
     <meta property="og:image" content="https://kr8labs.com/favicon.png" />
@@ -35,7 +35,7 @@
     <meta name="twitter:title" content="KR8 Labs | Custom Web Development &amp; Software Solutions" />
     <meta
       name="twitter:description"
-      content="KR8 Labs builds custom websites, SaaS platforms, and business software for growing businesses — fast, secure, and built to last."
+      content="KR8 Labs builds custom websites, SaaS platforms, and business software — fast, secure, and built to last. Based in Palawan, Philippines."
     />
     <meta name="twitter:image" content="https://kr8labs.com/favicon.png" />
 
@@ -47,7 +47,16 @@
         "url": "https://kr8labs.com/",
         "logo": "https://kr8labs.com/favicon.png",
         "email": "mail@kr8labs.com",
-        "description": "KR8 Labs builds custom websites, SaaS platforms, and business software for growing businesses.",
+        "description": "KR8 Labs builds custom websites, SaaS platforms, and business software for growing businesses. Based in Palawan, Philippines.",
+        "address": {
+          "@type": "PostalAddress",
+          "addressRegion": "Palawan",
+          "addressCountry": "PH"
+        },
+        "areaServed": [
+          { "@type": "AdministrativeArea", "name": "Palawan" },
+          { "@type": "Country", "name": "Philippines" }
+        ],
         "sameAs": [
           "https://www.facebook.com/kr8.labs",
           "https://www.instagram.com/kr8_labs/",
@@ -58,12 +67,10 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Both families in one request — two separate stylesheet links would be
+         two render-blocking round trips for the same server. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;450;500;600&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;450;500;600&family=Geist+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
   </head>

@@ -227,7 +227,7 @@ export const WORKS: Work[] = [
     description:
       "A personal site for a disability inclusion champion and accessible-travel advocate — built to carry his story, recognition, and work into one place.",
     url: "https://napreyalmario.online/",
-    image: "/works/naprey-almario.png",
+    image: "/works/naprey-almario.webp",
   },
   {
     name: "Kamp Malaya",
@@ -235,7 +235,7 @@ export const WORKS: Work[] = [
     description:
       "A booking-ready marketing site for a luxury eco-resort in Balabac, Palawan — built to sell the destination and convert inquiries into bookings.",
     url: "https://www.kampmalaya.tours/",
-    image: "/works/kamp-malaya.png",
+    image: "/works/kamp-malaya.webp",
   },
 ];
 
