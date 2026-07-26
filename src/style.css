@@ -839,6 +839,7 @@ section {
   .hero-visual {
     aspect-ratio: 4 / 3;
     order: -1;
+    justify-self: center;
   }
 
   .services-grid {
