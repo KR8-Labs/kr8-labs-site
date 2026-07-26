@@ -153,9 +153,35 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
   const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
   camera.position.z = CAMERA_Z;
 
-  const scenes = BUILDERS.map(build => build());
+  const SPEEDS = [0.003, 0.005, 0.004, 0.006, 0.0045, 0.0055];
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const TARGET_MS = 1000 / 30;
+  const BASELINE_MS = 1000 / 60;
 
-  const renderers = canvasSlots.map((slot) => {
+  const scenes: ReturnType<SceneBuilder>[] = [];
+  const renderers: THREE.WebGLRenderer[] = [];
+  const composers: EffectComposer[] = [];
+
+  let rafId = 0;
+  let lastTime = 0;
+  let inViewport = false;
+  let tabVisible = document.visibilityState === 'visible';
+  let buildRafId = 0;
+  let destroyed = false;
+
+  // Building one icon (WebGL context + EdgesGeometry + EffectComposer +
+  // bloom pass) synchronously for all 6 was a single ~350ms main-thread
+  // block right as the grid scrolled into view. Building one per animation
+  // frame instead spreads that cost across ~6 frames the browser can still
+  // paint and respond to input between, trading one stutter for an
+  // imperceptible staggered pop-in. The render() call here also warms up
+  // shader compilation per-icon (normally deferred to first render) so the
+  // rotation loop's first tick doesn't itself stutter once all 6 are built.
+  function buildOne(i: number) {
+    const slot = canvasSlots[i];
+    const s = BUILDERS[i]();
+    scenes[i] = s;
+
     const w = slot.clientWidth;
     const h = slot.clientHeight;
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -163,13 +189,9 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
     renderer.setSize(w, h, false);
     renderer.setClearColor(0x000000, 1);
     slot.appendChild(renderer.domElement);
-    return renderer;
-  });
+    renderers[i] = renderer;
 
-  const composers = scenes.map((s, i) => {
-    const w = canvasSlots[i].clientWidth;
-    const h = canvasSlots[i].clientHeight;
-    const pixelRatio = renderers[i].getPixelRatio();
+    const pixelRatio = renderer.getPixelRatio();
     // EffectComposer renders into its own WebGLRenderTarget rather than
     // straight to the canvas, so the renderer's antialias:true never
     // actually applies once post-processing (the bloom pass) is added —
@@ -177,25 +199,28 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
     // An explicit multisampled render target restores anti-aliasing through
     // the composer chain; it's cheap at this resolution (a few MB per icon).
     const renderTarget = new THREE.WebGLRenderTarget(w * pixelRatio, h * pixelRatio, { samples: 4 });
-    const composer = new EffectComposer(renderers[i], renderTarget);
+    const composer = new EffectComposer(renderer, renderTarget);
     composer.addPass(new RenderPass(s.scene, camera));
     const bloom = new UnrealBloomPass(
       new THREE.Vector2(w, h),
       1.0, 0.8, 0,
     );
     composer.addPass(bloom);
-    return composer;
-  });
+    composers[i] = composer;
 
-  const SPEEDS = [0.003, 0.005, 0.004, 0.006, 0.0045, 0.0055];
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const TARGET_MS = 1000 / 30;
-  const BASELINE_MS = 1000 / 60;
+    composer.render();
+  }
 
-  let rafId = 0;
-  let lastTime = 0;
-  let inViewport = false;
-  let tabVisible = document.visibilityState === 'visible';
+  function buildStep(index: number) {
+    if (destroyed) return;
+    buildOne(index);
+    if (index + 1 < canvasSlots.length) {
+      buildRafId = requestAnimationFrame(() => buildStep(index + 1));
+    } else {
+      buildRafId = 0;
+    }
+  }
+  buildRafId = requestAnimationFrame(() => buildStep(0));
 
   function tick(time: number) {
     rafId = requestAnimationFrame(tick);
@@ -204,7 +229,9 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
     lastTime = time;
 
     const rotationScale = dt / BASELINE_MS;
-    for (let i = 0; i < scenes.length; i++) {
+    // composers.length grows as buildStep progresses — icons animate as
+    // soon as they're built rather than waiting for all 6.
+    for (let i = 0; i < composers.length; i++) {
       if (!reducedMotion) scenes[i].group.rotation.y += SPEEDS[i] * rotationScale;
       composers[i].render();
     }
@@ -238,13 +265,9 @@ export function initServices3D(canvasSlots: HTMLElement[]): Services3D {
   }
   document.addEventListener('visibilitychange', onVisibilityChange);
 
-  if (reducedMotion) {
-    for (let i = 0; i < scenes.length; i++) {
-      composers[i].render();
-    }
-  }
-
   function destroy() {
+    destroyed = true;
+    if (buildRafId) cancelAnimationFrame(buildRafId);
     stop();
     observer.disconnect();
     document.removeEventListener('visibilitychange', onVisibilityChange);
