@@ -246,8 +246,15 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
 
   const renderPass = new RenderPass(scene, camera);
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.0, 0.8, 0);
-  // Assigned synchronously by the resize() call further below.
-  let composer!: EffectComposer;
+  // Null whenever the section is out of the viewport. The composer owns by far
+  // the largest GPU allocation on the page — a full-viewport 4x multisampled
+  // render target, its resolve buffer and the bloom mip chain, ~29MB at a
+  // 1058x1280 backing store — and holding it for the rest of the page's life
+  // is what makes weaker GPUs stutter in the sections *after* this one. It is
+  // released on exit and rebuilt on return.
+  let composer: EffectComposer | null = null;
+  // Declared up here because resize() consults it before allocating.
+  let inViewport = false;
 
   let carousel = 0;
 
@@ -313,6 +320,12 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
     );
     stage.scale.setScalar(fit);
 
+    // Everything above is cheap bookkeeping and is worth keeping current even
+    // while off screen. The composer is not — don't allocate ~29MB of render
+    // targets for a section nobody is looking at. updatePlayState() rebuilds
+    // by calling back into here the moment it scrolls into view.
+    if (!inViewport) return;
+
     // Same anti-aliasing note as before: EffectComposer renders into its own
     // WebGLRenderTarget, so the renderer's antialias:true never reaches the
     // canvas once bloom is in the chain — an explicit multisampled target
@@ -325,17 +338,26 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
     composer.render();
   }
 
+  function releaseGpu() {
+    composer?.dispose();
+    composer = null;
+    // Shrink the drawing buffer too — it is canvas-sized and would otherwise
+    // sit there at full resolution. resize() restores it, and updateStyle
+    // false means the CSS size (width/height 100%) is untouched either way.
+    renderer.setSize(1, 1, false);
+  }
+
   const ro = new ResizeObserver(resize);
   if (renderer.domElement.parentElement) ro.observe(renderer.domElement.parentElement);
   resize();
 
   let rafId = 0;
   let lastTime = 0;
-  let inViewport = false;
   let tabVisible = document.visibilityState === 'visible';
 
   function tick(time: number) {
     rafId = requestAnimationFrame(tick);
+    if (!composer) return; // released while off screen
     const dt = Math.min(time - lastTime, 100);
     if (dt < TARGET_MS) return;
     lastTime = time;
@@ -366,8 +388,15 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
     rafId = 0;
   }
   function updatePlayState() {
-    if (inViewport && tabVisible && !reducedMotion) start();
-    else stop();
+    if (!inViewport) {
+      stop();
+      releaseGpu();
+      return;
+    }
+    // Rebuild whatever the last exit released before anything tries to draw.
+    if (!composer) resize();
+    if (tabVisible && !reducedMotion) start();
+    else stop(); // still composited: reduced-motion draws a single static frame
   }
 
   const observer = new IntersectionObserver(
@@ -393,7 +422,9 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
   // hidden), since nothing else would ever pick up the change in that case.
   function setCarousel(value: number) {
     carousel = value;
-    if (!rafId) {
+    // No composer means the section is off screen and its targets are
+    // released — there is nothing to draw into and nothing to see.
+    if (!rafId && composer) {
       applyCarousel();
       composer.render();
     }
@@ -411,7 +442,7 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
         }
       });
     });
-    composer.dispose();
+    composer?.dispose(); // already null if the section was off screen
     renderer.dispose();
   }
 

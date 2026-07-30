@@ -63,6 +63,8 @@ export function services(): HTMLElement {
   let controller: Services3D | null = null;
   let lastApplied = -1;
   let removed = false;
+  // Starts false so the first onScroll() always settles the resting state.
+  let wasIdle = false;
 
   // `reveal` (0..1) drives how present the canvas is — it ramps up over the
   // entrance and back down over the exit; `leaving` says which of the two is
@@ -116,6 +118,17 @@ export function services(): HTMLElement {
 
   function onScroll() {
     const { reveal, leaving, carousel, releasePx } = computeState();
+
+    // Every section below this one still fires these scroll events for the
+    // rest of the page. Once the section is fully out of play, its styles are
+    // already at their resting values, so re-writing them on every event is
+    // pure style-recalc cost — and keeping `is-animating` on would hold a
+    // full-viewport compositor layer alive the whole way down. Settle once,
+    // then do nothing until it matters again.
+    const idle = reveal <= 0;
+    if (idle && wasIdle) return;
+    wasIdle = idle;
+    canvasWrap.classList.toggle("is-animating", !idle);
 
     // Once the stage un-pins, the header stops behaving like a sticky element
     // and travels with the page — 1:1 with scroll, which is exactly what the

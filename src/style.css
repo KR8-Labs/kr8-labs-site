@@ -431,6 +431,11 @@ section {
 .services-stage-canvas-wrap {
   position: absolute;
   inset: 0;
+}
+/* Only while the section is actually on screen. Left on permanently this
+   pins a 100vw x 100vh compositor layer for the whole life of the page, which
+   costs weaker GPUs real memory in every section below this one. */
+.services-stage-canvas-wrap.is-animating {
   will-change: transform, opacity;
 }
 .services-stage-canvas {
