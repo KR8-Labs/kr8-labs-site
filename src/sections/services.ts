@@ -8,6 +8,14 @@ import type { Services3D } from "../services-3d.ts";
 // fully opaque — deliberately well short of 1 so it reaches full opacity
 // partway up rather than only once it has finished sliding.
 const FADE_FRACTION = 0.45;
+// Fraction of the un-pin tail the exit animation spends. The tail is always
+// one viewport (sticky geometry: the stage travels its own height once it
+// releases), and the last service stays on screen for all of it — so letting
+// the exit fill the whole thing left Performance lingering for roughly twice
+// the scroll distance of the services before it. Finishing early hands the
+// remainder back as ordinary page background, which is what sits between
+// every other pair of sections anyway.
+const EXIT_FRACTION = 0.5;
 
 export function services(): HTMLElement {
   const section = fromHTML(`
@@ -46,6 +54,7 @@ export function services(): HTMLElement {
   // the canvas element internally (Three.js creates its own), so a direct
   // reference to it would go stale the moment the controller is built.
   const canvasWrap = section.querySelector<HTMLElement>(".services-stage-canvas-wrap")!;
+  const header = section.querySelector<HTMLElement>(".services-header")!;
   const stageText = section.querySelector<HTMLElement>(".services-stage-text")!;
   const panels = Array.from(section.querySelectorAll<HTMLElement>(".services-panel"));
   const dots = Array.from(section.querySelectorAll<HTMLElement>(".services-progress-dot"));
@@ -55,26 +64,47 @@ export function services(): HTMLElement {
   let lastApplied = -1;
   let removed = false;
 
-  // `entrance` (0..1) drives the canvas reveal at the top of the track;
-  // `carousel` (0..count, wraps) drives which object is at the front once
-  // the entrance has finished.
-  function computeState(): { entrance: number; carousel: number } {
+  // `reveal` (0..1) drives how present the canvas is — it ramps up over the
+  // entrance and back down over the exit; `leaving` says which of the two is
+  // running, since they move the card in opposite directions. `carousel`
+  // (0..count) drives which object is at the front in between.
+  function computeState(): {
+    reveal: number;
+    leaving: boolean;
+    carousel: number;
+    releasePx: number;
+  } {
     const rect = track.getBoundingClientRect();
     const vh = window.innerHeight;
-    // The entrance is keyed to the stage travelling up through the viewport —
-    // 0 when the track's top is at the bottom of the screen, 1 the moment it
-    // reaches the top and the stage pins. Keying it to the *pinned* scroll
-    // range instead would leave the canvas at opacity 0 for the whole stretch
-    // directly under the section header, reading as a large empty gap.
+    // Entrance and exit are mirror images, one viewport of scroll each: the
+    // entrance follows the track's *top* edge rising from the bottom of the
+    // screen to the top, finishing exactly as the stage pins; the exit
+    // follows its *bottom* edge doing the same, starting exactly as it
+    // unpins. Keying the entrance to the pinned scroll range instead would
+    // leave the canvas at opacity 0 for the whole stretch directly under the
+    // section header, reading as a large empty gap.
     const entrance = Math.min(1, Math.max(0, 1 - rect.top / vh));
-    // The carousel then gets the entire pinned range to itself.
+    const exit = Math.min(1, Math.max(0, (1 - rect.bottom / vh) / EXIT_FRACTION));
+    // The carousel gets the entire pinned range — which is exactly the span
+    // where both entrance and exit sit at their extremes, so it never
+    // competes with either.
     const total = rect.height - vh;
     const progress = total > 0 ? Math.min(1, Math.max(0, -rect.top / total)) : 1;
     // Clamp just short of SERVICES.length — landing exactly on it would leave
     // no object owning the step while the text panel is still clamped to the
     // last index, a one-frame mismatch right at track's end.
     const carousel = Math.min(progress * SERVICES.length, SERVICES.length - 0.001);
-    return { entrance, carousel };
+    // Pixels scrolled since the stage un-pinned — 0 while it's still pinned.
+    // Drives releasing the header in onScroll(). Keyed to the un-pin rather
+    // than to the final service taking over, so the title leaves *with* the
+    // last frame instead of sliding away while it's still sitting there.
+    const releasePx = Math.max(0, vh - rect.bottom);
+    return {
+      reveal: Math.min(entrance, 1 - exit),
+      leaving: exit > 0,
+      carousel,
+      releasePx,
+    };
   }
 
   function applyIndex(index: number) {
@@ -85,25 +115,49 @@ export function services(): HTMLElement {
   }
 
   function onScroll() {
-    const { entrance, carousel } = computeState();
+    const { reveal, leaving, carousel, releasePx } = computeState();
+
+    // Once the stage un-pins, the header stops behaving like a sticky element
+    // and travels with the page — 1:1 with scroll, which is exactly what the
+    // Performance panel inside the stage is doing, so the title and the last
+    // frame leave together. Translating it is equivalent to un-sticking it but
+    // without the snap that flipping `position` mid-scroll would cause: the
+    // element would jump from its pinned spot back to its long-since-scrolled-
+    // past place in the flow. Capped once it has cleared the top of the
+    // screen, so the offset stays bounded for the rest of the section.
+    if (releasePx > 0) {
+      // Read from the CSS rather than repeating the sticky offset here, so
+      // the two can't drift apart.
+      const stickyTop = parseFloat(getComputedStyle(header).top) || 0;
+      const clearance = stickyTop + header.offsetHeight;
+      header.style.transform = `translateY(${-Math.min(releasePx, clearance)}px)`;
+    } else if (header.style.transform) {
+      header.style.transform = "";
+    }
 
     if (reducedMotion) {
       canvasWrap.style.transform = "";
       canvasWrap.style.opacity = "";
     } else {
-      // Slides up into place as a whole card — translate + *uniform* scale,
-      // never scaleY, which would squash the 3D render's aspect ratio. The
-      // stage clips it, so it reads as rising from below the section edge.
-      // smoothstep so it eases in/out rather than tracking scroll linearly.
-      const eased = entrance * entrance * (3 - 2 * entrance);
-      canvasWrap.style.transform = `translateY(${(1 - eased) * 40}%) scale(${0.94 + eased * 0.06})`;
+      // Moves as a whole card — translate + *uniform* scale, never scaleY,
+      // which would squash the 3D render's aspect ratio. The stage clips it,
+      // so it reads as rising in from below the section edge and lifting out
+      // past the top. smoothstep so it eases rather than tracking scroll
+      // linearly.
+      const eased = reveal * reveal * (3 - 2 * reveal);
+      // Mirrored, not rewound. Leaving, the card carries on in the same
+      // direction it arrived and lifts away past the top; playing the
+      // entrance backwards would send it back *down* against the scroll,
+      // which reads as the page stuttering rather than the card departing.
+      const dir = leaving ? -1 : 1;
+      canvasWrap.style.transform = `translateY(${dir * (1 - eased) * 40}%) scale(${0.94 + eased * 0.06})`;
       // Fade runs on its own, shorter schedule than the slide: it starts at
-      // fully transparent and is done by FADE_FRACTION of the way up, so the
-      // card spends the rest of the rise solid rather than creeping towards
-      // opaque for the whole entrance.
-      canvasWrap.style.opacity = String(Math.min(1, entrance / FADE_FRACTION));
+      // fully transparent and is done by FADE_FRACTION of the way in, so the
+      // card spends the rest of the travel solid rather than creeping towards
+      // opaque the whole way (and the same in reverse on the way out).
+      canvasWrap.style.opacity = String(Math.min(1, reveal / FADE_FRACTION));
     }
-    stageText.style.opacity = String(Math.max(0, (entrance - 0.5) / 0.5));
+    stageText.style.opacity = String(Math.max(0, (reveal - 0.5) / 0.5));
 
     const index = Math.min(SERVICES.length - 1, Math.floor(carousel));
     applyIndex(index);
