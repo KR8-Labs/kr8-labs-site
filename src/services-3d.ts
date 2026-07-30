@@ -13,10 +13,13 @@ export interface Services3D {
 const CAMERA_Z = 3.0;
 const FOV = 45;
 const SPEEDS = [0.003, 0.005, 0.004, 0.006, 0.0045, 0.0055];
-// How far back an object travels across its own step before handing off.
-const RECEDE_DISTANCE = 1.7;
-const RECEDE_SCALE_FLOOR = 0.55;
-// Portions of a step spent fading in at the front / fading out into the back.
+// Objects travel *toward* the camera across their own step: they enter far
+// back and small, and reach full size at z=0 just as they hand off. Scrolling
+// down advances that travel so they grow; scrolling up runs it backwards and
+// they shrink away.
+const APPROACH_DISTANCE = 1.7; // z-distance covered from far end to front
+const FAR_SCALE = 0.55; // scale at the far end of that travel
+// Portions of a step spent fading in at the far end / fading out at the front.
 // These must not overlap (FADE_IN + FADE_OUT < 1) — that's what guarantees
 // only one object is ever on screen at a time. Because exactly one object is
 // ever visible, opacity has to pass through zero at each handoff; keeping the
@@ -261,7 +264,7 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
   // Re-derives every object's position/scale/opacity from the current
   // carousel value. Each object owns exactly one unit-wide step of that
   // value: object i is on screen only while `carousel` is inside [i, i+1),
-  // where it fades in at the front, holds, then recedes and fades out just
+  // where it fades in at the far end, grows toward the camera, then fades out
   // as object i+1 takes over — so exactly one is ever visible.
   // Called before the first resize()/render() below so that render never
   // draws a frame with objects still at their untransformed default
@@ -272,13 +275,16 @@ export function initServices3D(canvas: HTMLCanvasElement): Services3D {
       const local = carousel - i; // 0 → 1 across this object's own step
       item.group.visible = local >= 0 && local < 1;
       if (!item.group.visible) return;
-      item.group.position.z = -local * RECEDE_DISTANCE;
-      item.group.scale.setScalar(1 - local * (1 - RECEDE_SCALE_FLOOR));
+      // local 0 = far back and small, local 1 = at the camera plane and full
+      // size. Advancing `local` (scrolling down) grows the object; running it
+      // backwards (scrolling up) shrinks it away again.
+      item.group.position.z = (local - 1) * APPROACH_DISTANCE;
+      item.group.scale.setScalar(FAR_SCALE + local * (1 - FAR_SCALE));
       let fade = 1;
       // The first and last objects have no neighbour to hand off to on their
       // outer edge, so they hold rather than fading against an empty stage —
       // the first would otherwise ride the entrance up as an empty card, and
-      // the last would dissolve at the bottom of the track.
+      // the last would dissolve just as it reaches full size.
       if (i > 0 && local < FADE_IN) fade = local / FADE_IN;
       else if (i < last && local > 1 - FADE_OUT) fade = (1 - local) / FADE_OUT;
       item.mats.forEach(({ mat, base }) => {
